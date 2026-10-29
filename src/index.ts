@@ -1,5 +1,6 @@
 import express, { Request, Response, NextFunction } from "express";
 import { config } from "./config.js";
+//import { error } from "node:console";
 
 const app = express();
 const PORT = 8080;
@@ -32,22 +33,92 @@ function handlerReadiness(req: Request, res: Response) {
 }
 
 function handlerMetrics(req: Request, res: Response) {
-    res.type("text/plain").send(`Hits: ${config.fileserverHits}`);
+    res
+        .set("Content-Type", "text/html; charset=utf-8")
+        .send(`
+<html>
+    <body>
+        <h1>Welcome, Chirpy Admin</h1>
+        <p>Chirpy has been visited ${config.fileserverHits} times!</p>
+    </body>
+</html>`
+        );
 }
 
 function handlerReset(req: Request, res: Response) {
+    config.fileserverHits = 0;
     res.type("text/plain").send("Hits reset to 0");
 }
 
+/* function handlerValidateChirp(req: Request, res: Response) {
+    let body = "";
+
+    req.on("data", (chunk) => {
+        body += chunk.toString();
+    });
+
+    req.on("end", () => {
+        let parsedBody: unknown;
+
+        try {
+            parsedBody = JSON.parse(body);                     
+        } catch {
+            res.status(400).json({ error: "Something went wrong" });
+            return;
+        }
+
+        if (
+            typeof parsedBody !== "object" ||
+            parsedBody === null ||
+            !("body" in parsedBody) ||
+            typeof parsedBody.body !== "string"
+        ) {
+            res.status(400).json({ error: "Something went wrong" });
+            return;
+        }
+
+        if ( parsedBody.body.length > 140) {
+            res.status(400).json({ error: "Chirp is too long" });
+            return;
+        }
+
+        res.status(200).json({ valid: true });
+    });
+} */
+
+app.use(express.json());
+
 app.use(middlewareLogResponses);
 
-app.get("/healthz", handlerReadiness);
+app.get("/api/healthz", handlerReadiness);
 
 app.use("/app", middlewareMetricsInc);
 app.use("/app", express.static("./src/app"));
 
-app.use("/metrics", handlerMetrics);
-app.use("/reset", handlerReset);
+app.get("/admin/metrics", handlerMetrics);
+app.post("/admin/reset", handlerReset);
+
+app.post("/api/validate_chirp", (req: Request, res: Response) => {
+    const body: unknown = req.body?.body;
+
+    if (typeof body !== "string") {
+        res.status(400).json({ error: "body must be a string" });
+        return;
+    }
+
+    if (body.length > 140) {
+        res.status(400).json({ error: "Chirp is too long" });
+        return;
+    }
+
+    const cleanedBody = body.replace(
+        /(^|\s)(kerfuffle|sharbert|fornax)(?=\s|$)/gi,
+        "$1****",
+    );
+
+    //res.status(200).json({ valid: true });
+    res.status(200).json({ cleanedBody });
+});
 
 app.listen(PORT, () => {
   console.log(`Server is running at http://localhost:${PORT}`);
