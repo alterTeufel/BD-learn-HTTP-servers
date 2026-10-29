@@ -1,9 +1,16 @@
-import express, { Request, Response, NextFunction } from "express";
+import express, { Request, Response, NextFunction, ErrorRequestHandler } from "express";
 import { config } from "./config.js";
-//import { error } from "node:console";
+
+
+class BadRequestError extends Error {}
+class UnauthorizedError extends Error {}
+class ForbiddenError extends Error {}
+class NotFoundError extends Error {}
+
 
 const app = express();
 const PORT = 8080;
+
 
 function middlewareLogResponses(
     req: Request,
@@ -86,6 +93,8 @@ function handlerReset(req: Request, res: Response) {
     });
 } */
 
+
+
 app.use(express.json());
 
 app.use(middlewareLogResponses);
@@ -98,7 +107,7 @@ app.use("/app", express.static("./src/app"));
 app.get("/admin/metrics", handlerMetrics);
 app.post("/admin/reset", handlerReset);
 
-app.post("/api/validate_chirp", (req: Request, res: Response) => {
+app.post("/api/validate_chirp", async (req: Request, res: Response) => {
     const body: unknown = req.body?.body;
 
     if (typeof body !== "string") {
@@ -107,8 +116,7 @@ app.post("/api/validate_chirp", (req: Request, res: Response) => {
     }
 
     if (body.length > 140) {
-        res.status(400).json({ error: "Chirp is too long" });
-        return;
+        throw new BadRequestError("Chirp is too long. Max length is 140");
     }
 
     const cleanedBody = body.replace(
@@ -119,6 +127,28 @@ app.post("/api/validate_chirp", (req: Request, res: Response) => {
     //res.status(200).json({ valid: true });
     res.status(200).json({ cleanedBody });
 });
+
+// Error handling middleware needs to be defined last, after all your
+// other app.use() and route handlers (app.post, app.get, etc.),
+const errorHandler: ErrorRequestHandler = (err, req, res, next) => {
+    if (err instanceof BadRequestError) {
+        res.status(400).json({ error: err.message });
+    } else if (err instanceof UnauthorizedError) {
+        res.status(401).json({ error: err.message });
+    } else if (err instanceof ForbiddenError) {
+        res.status(403).json({ error: err.message });
+    } else if (err instanceof NotFoundError) {
+        res.status(404).json({ error: err.message });
+    } else {
+        console.log(err);
+        res.status(500).json({
+            error: "Something went wrong on our end",
+        });
+    }
+}
+
+app.use(errorHandler);
+// but before app.listen.
 
 app.listen(PORT, () => {
   console.log(`Server is running at http://localhost:${PORT}`);
